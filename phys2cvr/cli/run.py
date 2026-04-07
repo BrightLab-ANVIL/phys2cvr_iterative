@@ -476,14 +476,28 @@ def _get_parser():
     opt_lreg = parser.add_argument_group('Optional Arguments for the lagged regression')
     opt_lreg.add_argument(
         '-lm',
+        '-lmax',
         '--lag-max',
+        '-lm',
         dest='lag_max',
         type=float,
         help=(
-            'Maximum lag to consider during lag regression in seconds. The same lag '
-            'will be considered in both directions.\nDespite the code being python, the '
-            'upper limit is included in the computation. E.g. -lm 9 -ls .3 means '
-            '[-9, +9] (61 regressors).'
+            'Maximum (i.e. latest) lag to consider during lag regression, expressed in seconds. '
+            'If `-lmin` is not specified, the opposite of the maximum lag will be considered the minimum (i.e. earliest) lag.\n'
+            'E.g., -lm 9 -ls .3 means [-9, +9] (61 regressors) and -lmin -6 -lm 9 -ls .3 means [-6, +9] (51 regressors) . '
+        ),
+        default=None,
+    )
+    opt_lreg.add_argument(
+        '-lmin',
+        '--lag-min',
+        dest='lag_min',
+        type=float,
+        help=(
+            'Minimum (i.e. earliest) lag to consider during lag regression, expressed in seconds. '
+            'If not specified and `lmax` is positive, it will be the opposite value of `lmax`, so the considered lag range will be symmetric around the coarse temporal realignment.\n'
+            'Use this to specify asymmetric lag ranges. E.g., -lmin -6 -lm 9 -ls .3 '
+            'means [-6, +9] (51 regressors).'
         ),
         default=None,
     )
@@ -685,6 +699,19 @@ def _check_opt_conf(parser):
                 f'{parser.workflow_config} is not configured. '
                 'In fact, you should not see this message at all.'
             )
+
+    if parser.lag_min is None and parser.lag_max is not None:
+        if parser.lag_max > 0:
+            parser.lag_min = -1 * float(parser.lag_max)
+        else:
+            raise ValueError(
+                'Given maximum lag is 0 or negative, but no minimum lag was provided. Halting execution.'
+            )
+
+    if parser.lag_max is None and parser.lag_min is not None:
+        raise ValueError(
+            'A minimum lag was provided without providing a maximum lag. Please rerun providing both or none.'
+        )
 
     if parser.r2model is None:
         parser.r2model = 'full'

@@ -437,7 +437,7 @@ def select_lag_avoid_boundary(
     expand_by=2,
 ):
     """
-    Select lag indices while avoiding boundary-locking.
+    Iteratively expand the maximum shift only in voxels with lag values at the boundaries.
 
     Parameters
     ----------
@@ -469,6 +469,10 @@ def select_lag_avoid_boundary(
     final_lag_idx : ndarray
         Selected lag indices per voxel.
     """
+
+    LGR.info(
+        f'Identifying optimal shifts using a starting maximum of {starting_max}s and a final maximum of {final_max}s. If needed, the starting maximum will be increased in increments of {expand_by}s.'
+    )
 
     final_lag_idx = np.full(mask.shape, 0, dtype=int) #stores final lag indices
     active = mask.astype(bool) #make all in mask voxels active

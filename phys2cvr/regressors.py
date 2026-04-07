@@ -234,6 +234,7 @@ def create_fine_shift_regressors(
     petco2hrf,
     optshift,
     lag_max,
+    lag_min,
     freq,
     func_size,
     func_upsamp_size,
@@ -250,9 +251,14 @@ def create_fine_shift_regressors(
         Regressor of interest
     optshift : int
         The index shift computed by the Xcorr/bulk shift
-    lag_max : int or float, optional
-        Limits (both positive and negative) of the temporal area to explore,
-        expressed in seconds.
+    lag_max : int, float, or None, optional
+        Upper limit of the temporal area to explore, expressed in seconds.
+        Caution: this is not a pythonic range, but a real range, i.e. the upper limit is included.
+        Default: None
+    lag_min : int, float, or None, optional
+        Lower limit of the temporal area to explore, expressed in seconds.
+        If set to None, and lag_max is not None and is positive, lag_min defaults to -lag_max (symmetric range).
+        Default: None
     freq : str, int, or float
         Sample frequency of petco2hrf
     func_size : int
@@ -277,19 +283,19 @@ def create_fine_shift_regressors(
     os.makedirs(regr_dir, exist_ok=True)
     outprefix = os.path.join(regr_dir, base)
 
-    neg_shifts = int(lag_max * freq)
-    pos_shifts = neg_shifts if legacy else neg_shifts + 1
+    neg_shifts = int(abs(lag_min) * freq)
+    pos_shifts = int(abs(lag_max) * freq) if legacy else int(abs(lag_max) * freq) + 1
 
     # Padding regressor right for shifts if not enough timepoints
     # Padding regressor left for shifts and update optshift if less than neg_shifts.
-    rpad = max(0, func_upsamp_size + optshift + pos_shifts - petco2hrf.shape[0])
-    lpad = max(0, neg_shifts - optshift)
+    rpad = max(0, int(func_upsamp_size + optshift + neg_shifts - petco2hrf.shape[0]))
+    lpad = max(0, int(pos_shifts - optshift + 1))
 
     petco2hrf = np.pad(petco2hrf, (int(lpad), int(rpad)), 'mean')
 
     # Create sliding window view into petco2hrf, -1 because of reversed indexing
-    neg_idx = optshift - neg_shifts + lpad - 1
-    pos_idx = optshift + pos_shifts + lpad - 1
+    neg_idx = optshift - pos_shifts + lpad - 1
+    pos_idx = optshift + neg_shifts + lpad - 1
     # select the right windows the other way round
     petco2hrf_lagged = swv(petco2hrf, func_upsamp_size)[pos_idx:neg_idx:-1].copy()
 
@@ -306,6 +312,7 @@ def create_physio_regressor(
     freq,
     outprefix,
     lag_max=None,
+    lag_min=None,
     trial_len=None,
     n_trials=None,
     ext='.1D',
@@ -329,10 +336,14 @@ def create_physio_regressor(
         Sample frequency of petco2hrf
     outprefix : list or path
         Path to output directory for computed regressors.
-    lag_max : int or float, optional
-        Limits (both positive and negative) for the estimated temporal lag,
-        expressed in seconds.
-        Default: 9 (i.e., -9 to +9 seconds)
+    lag_max : int, float, or None, optional
+        Upper limit of the temporal area to explore, expressed in seconds.
+        Caution: this is not a pythonic range, but a real range, i.e. the upper limit is included.
+        Default: None
+    lag_min : int, float, or None, optional
+        Lower limit of the temporal area to explore, expressed in seconds.
+        If set to None, and lag_max is not None and is positive, lag_min defaults to -lag_max (symmetric range).
+        Default: None
     trial_len : str or int, optional
         Length of each individual trial for timeseries which include more than one trial
         (e.g., multiple BreathHold trials, trials within CO2 challenges, ...)
@@ -398,6 +409,7 @@ def create_physio_regressor(
             petco2hrf,
             optshift,
             lag_max,
+            lag_min,
             freq,
             func_avg.shape[-1],
             func_upsampled.shape[-1],
@@ -413,6 +425,88 @@ def create_physio_regressor(
         LGR.info('Skipping generation of lagged regressors.')
 
     return petco2hrf_demean, petco2hrf_lagged
+
+def select_lag_avoid_boundary(
+    r_square_all,
+    mask,
+    starting_max,
+    final_max,
+    lag_min,
+    lag_step,
+    freq,
+    expand_by=2,
+):
+    """
+    Select lag indices while avoiding boundary-locking.
+
+    Parameters
+    ----------
+    r_square_all : ndarray
+        R^2 values with shape (..., N_lags)
+    mask : ndarray
+        Boolean or 0/1 mask of valid voxels
+    starting_max : float
+        Initial maximum temporal shift to explore, expressed in seconds.
+        Caution: this is not a pythonic range, but a real range, i.e. the upper limit is included.
+        Default: None
+    final_max : float
+        Hard upper limit of the temporal area to explore, expressed in seconds.
+        Caution: this is not a pythonic range, but a real range, i.e. the upper limit is included.
+        Default: None
+    lag_min : int, float, or None, optional
+        Lower limit of the temporal area to explore, expressed in seconds.
+        If set to None, and lag_max is not None and is positive, lag_min defaults to -lag_max (symmetric range).
+        Default: None
+    lag_step : float
+        Lag step in seconds
+    freq : float
+        Sampling frequency (Hz)
+    expand_by : float, optional
+        Amount (seconds) to expand the lag window each iteration
+
+    Returns
+    -------
+    final_lag_idx : ndarray
+        Selected lag indices per voxel.
+    """
+
+    final_lag_idx = np.full(mask.shape, 0, dtype=int) #stores final lag indices
+    active = mask.astype(bool) #make all in mask voxels active
+    current_max = starting_max
+
+    while True:
+        # Convert lag (seconds) -> index
+        max_idx = int((current_max - lag_min) / lag_step)
+        boundary_idx = max_idx - 1
+
+        # Argmax only within current window
+        lag_idx = np.argmax(r_square_all[..., : max_idx + 1], axis=-1)
+        
+        # Identify voxels that hit the boundary
+        #at_boundary = (lag_idx >= boundary_idx) & active
+        at_boundary = ((lag_idx >= boundary_idx) | (lag_idx == 0) | (lag_idx == 1)) & active
+
+        # Accept non-boundary voxels and freeze them
+        frozen = active & ~at_boundary
+        final_lag_idx[frozen] = lag_idx[frozen]
+    
+        # Remove frozen voxels from active
+        active[frozen] = 0  # now only boundary voxels remain active
+    
+        # Keep only boundary-stuck voxels
+        active = active.astype(bool)  # ensure it's boolean
+
+        if not np.any(active):
+            break
+
+        if current_max + expand_by > final_max:
+            # Give up on remaining voxels
+            final_lag_idx[active] = lag_idx[active]
+            break
+
+        current_max += expand_by
+
+    return final_lag_idx
 
 
 """

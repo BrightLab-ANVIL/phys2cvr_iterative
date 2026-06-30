@@ -1,3 +1,26 @@
+# 0.29.0 (Tue Jun 30 2026)
+
+#### 🚀 Enhancement
+
+- Add the option to use an asymmetrical lag range [#155](https://github.com/smoia/phys2cvr/pull/155) ([@beccaclements99](https://github.com/beccaclements99) [@pre-commit-ci[bot]](https://github.com/pre-commit-ci[bot]) [@smoia](https://github.com/smoia))
+
+#### ⚠️ Tests
+
+- Bump actions/checkout from 6 to 7 [#159](https://github.com/smoia/phys2cvr/pull/159) ([@dependabot[bot]](https://github.com/dependabot[bot]) [@pre-commit-ci[bot]](https://github.com/pre-commit-ci[bot]))
+
+#### 🏠 Internal
+
+- [pre-commit.ci] pre-commit autoupdate [#158](https://github.com/smoia/phys2cvr/pull/158) ([@pre-commit-ci[bot]](https://github.com/pre-commit-ci[bot]))
+
+#### Authors: 4
+
+- [@dependabot[bot]](https://github.com/dependabot[bot])
+- [@pre-commit-ci[bot]](https://github.com/pre-commit-ci[bot])
+- Becca Clements ([@beccaclements99](https://github.com/beccaclements99))
+- Stefano Moia ([@smoia](https://github.com/smoia))
+
+---
+
 # 0.28.4 (Fri Mar 13 2026)
 
 #### 🐛 Bug Fix

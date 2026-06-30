@@ -50,6 +50,7 @@ def phys2cvr(
     lagged_regression=True,
     r2model='full',
     lag_max=None,
+    lag_min=None,
     lag_step=None,
     legacy=False,
     l_degree=0,
@@ -148,12 +149,15 @@ def phys2cvr(
         will change results with orthogonalisations.
         See `stats.ols` help for more details.
         Default: `full`
-    lag_max : int or float, optional
-        Limits (both positive and negative) of the temporal area to explore,
-        expressed in seconds (e.g. ±9 seconds). Caution: this is not a pythonic
-        range, but a real range, i.e. the upper limit is included (e.g. [-9, +9]).
+    lag_max : int, float, or None, optional
+        Upper limit of the temporal area to explore, expressed in seconds.
+        Caution: this is not a pythonic range, but a real range, i.e. the upper limit is included.
         Default: None
-    lag_step : int or float, optional
+    lag_min : int, float, or None, optional
+        Lower limit of the temporal area to explore, expressed in seconds.
+        If set to None, and lag_max is not None and is positive, lag_min defaults to -lag_max (symmetric range).
+        Default: None
+    lag_step : int, float, or None, optional
         Step of the lag to take into account in seconds.
         Default: None
     legacy : bool, optional
@@ -225,6 +229,9 @@ def phys2cvr(
             functional nifti file.
         - If a lag map was specified, lag_step was not, and the lag map seems
             to have different lag_steps inside.
+        - If the maximum lag is 0 or negative and no minimum lag is provided
+        - If a minimum lag is provided and no maximum lag is provided
+        - If the minimum lag is greater than or equal to the maximum lag
     NotImplementedError
         - If a file type is not supported yet.
     NameError
@@ -299,8 +306,24 @@ def phys2cvr(
     highcut = utils.if_declared_force_type(highcut, 'float', 'highcut')
     lowcut = utils.if_declared_force_type(lowcut, 'float', 'lowcut')
     lag_max = utils.if_declared_force_type(lag_max, 'float', 'lag_max')
+    lag_min = utils.if_declared_force_type(lag_min, 'float', 'lag_min')
     lag_step = utils.if_declared_force_type(lag_step, 'float', 'lag_step')
     l_degree = utils.if_declared_force_type(l_degree, 'int', 'l_degree')
+    if lag_max is not None and lag_min is None:
+        if lag_max > 0:
+            lag_min = -lag_max
+        else:
+            raise ValueError(
+                'Given maximum lag is 0 or negative, but no minimum lag was provided. Halting execution.'
+            )
+    if lag_max is None and lag_min is not None:
+        raise ValueError(
+            'A minimum lag was provided without providing a maximum lag. Please rerun providing both or none.'
+        )
+    if lag_max is not None and lag_min >= lag_max:
+        raise ValueError(
+            f'Invalid lag range: lag_min ({lag_min}) >= lag_max ({lag_max}). Please provide a range where lag_min < lag_max.'
+        )
     if l_degree < 0:
         raise ValueError(
             'The specified order of the Legendre polynomials must be >= 0.'
@@ -487,17 +510,18 @@ def phys2cvr(
                     raise ValueError(
                         f'phys2cvr found different delta lags in {lag_map}: {lag_step}'
                     )
-
             lag_step = lag_step[0]
+
             LGR.warning(f'phys2cvr detected a delta lag of {lag_step} seconds')
         else:
             LGR.warning(f'Forcing delta lag to be {lag_step}')
 
         if lag_max is None:
-            lag_max = np.abs(lag_list).max()
-            LGR.warning(f'phys2cvr detected a max lag of {lag_max} seconds')
+            lag_max = np.asarray(lag_list).max()
+            lag_min = np.asarray(lag_list).min()
+            LGR.warning(f'phys2cvr detected a lag range of [{lag_min}, {lag_max}]')
         else:
-            LGR.warning(f'Forcing max lag to be {lag_max}')
+            LGR.warning(f'Forcing lag range to be [{lag_min}, {lag_max}]')
 
     # If a regressor dir is specified, try load the data,
     # If failing or otherwise, compute the regressors.
@@ -520,6 +544,7 @@ def phys2cvr(
             freq,
             outprefix,
             lag_max,
+            lag_min,
             trial_len,
             n_trials,
             '.1D',
@@ -626,7 +651,7 @@ def phys2cvr(
 
                 step = int(lag_step * freq)
 
-                lag_idx = np.round((lag + lag_max) * freq / step).astype(int)
+                lag_idx = np.round((lag - lag_min) * freq / step).astype(int)
                 lag_idx_list = np.unique(lag_idx)
 
                 # Prepare empty matrices
@@ -653,15 +678,18 @@ def phys2cvr(
 
             else:
                 LGR.info(
-                    f'Running lagged CVR estimation with max lag = {lag_max}! '
+                    f'Running lagged CVR estimation with lag range = [{lag_min}, {lag_max}]! '
                     '(might take a while...)'
                 )
 
                 if legacy:
-                    nrep = int(lag_max * freq * 2)
+                    nrep_neg = int(abs(lag_min) * freq)
+                    nrep_pos = int(abs(lag_max) * freq)
+                    nrep = nrep_neg + nrep_pos
                 else:
-                    nrep = int(lag_max * freq * 2) + 1
-
+                    nrep_neg = int(abs(lag_min) * freq)
+                    nrep_pos = int(abs(lag_max) * freq)
+                    nrep = nrep_neg + nrep_pos + 1
                 # Check the number of repetitions first
                 if lag_step:
                     step = int(lag_step * freq)
@@ -720,7 +748,7 @@ def phys2cvr(
 
                 # Find the right lag for CVR estimation
                 lag_idx = np.argmax(r_square_all, axis=-1)
-                lag = (lag_idx * step) / freq - (mask * lag_max)
+                lag = (lag_idx * step) / freq + (mask * lag_min)
                 # Express lag map relative to median of the roi
                 lag_rel = lag - (mask * np.median(lag[roi]))
 

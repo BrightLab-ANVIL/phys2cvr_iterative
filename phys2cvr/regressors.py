@@ -234,6 +234,7 @@ def create_fine_shift_regressors(
     petco2hrf,
     optshift,
     lag_max,
+    lag_min,
     freq,
     func_size,
     func_upsamp_size,
@@ -250,9 +251,14 @@ def create_fine_shift_regressors(
         Regressor of interest
     optshift : int
         The index shift computed by the Xcorr/bulk shift
-    lag_max : int or float, optional
-        Limits (both positive and negative) of the temporal area to explore,
-        expressed in seconds.
+    lag_max : int, float, or None, optional
+        Upper limit of the temporal area to explore, expressed in seconds.
+        Caution: this is not a pythonic range, but a real range, i.e. the upper limit is included.
+        Default: None
+    lag_min : int, float, or None, optional
+        Lower limit of the temporal area to explore, expressed in seconds.
+        If set to None, and lag_max is not None and is positive, lag_min defaults to -lag_max (symmetric range).
+        Default: None
     freq : str, int, or float
         Sample frequency of petco2hrf
     func_size : int
@@ -270,26 +276,44 @@ def create_fine_shift_regressors(
     Returns
     -------
     petco2hrf_lagged : np.ndarray
-        The shifted versions of the regresosr of interest.
+        The shifted versions of the regressor of interest.
     """
+    if lag_max is not None and lag_min is None:
+        if lag_max > 0:
+            lag_min = -lag_max
+        else:
+            raise ValueError(
+                'Given maximum lag is 0 or negative, but no minimum lag was provided. Halting execution.'
+            )
+
+    if lag_max is None and lag_min is not None:
+        raise ValueError(
+            'A minimum lag was provided without providing a maximum lag. Please rerun providing both or none.'
+        )
+
+    if lag_max is not None and lag_min >= lag_max:
+        raise ValueError(
+            f'Invalid lag range: lag_min ({lag_min}) >= lag_max ({lag_max}). Please provide a range where lag_min < lag_max.'
+        )
+
     outdir, base = os.path.split(outprefix)
     regr_dir = os.path.join(outdir, 'regr')
     os.makedirs(regr_dir, exist_ok=True)
     outprefix = os.path.join(regr_dir, base)
 
-    neg_shifts = int(lag_max * freq)
-    pos_shifts = neg_shifts if legacy else neg_shifts + 1
+    neg_shifts = int(abs(lag_min) * freq)
+    pos_shifts = int(abs(lag_max) * freq) if legacy else int(abs(lag_max) * freq) + 1
 
     # Padding regressor right for shifts if not enough timepoints
     # Padding regressor left for shifts and update optshift if less than neg_shifts.
-    rpad = max(0, func_upsamp_size + optshift + pos_shifts - petco2hrf.shape[0])
-    lpad = max(0, neg_shifts - optshift)
+    rpad = max(0, int(func_upsamp_size + optshift + neg_shifts - petco2hrf.shape[0]))
+    lpad = max(0, int(pos_shifts - optshift + 1))
 
     petco2hrf = np.pad(petco2hrf, (int(lpad), int(rpad)), 'mean')
 
     # Create sliding window view into petco2hrf, -1 because of reversed indexing
-    neg_idx = optshift - neg_shifts + lpad - 1
-    pos_idx = optshift + pos_shifts + lpad - 1
+    neg_idx = optshift - pos_shifts + lpad - 1
+    pos_idx = optshift + neg_shifts + lpad - 1
     # select the right windows the other way round
     petco2hrf_lagged = swv(petco2hrf, func_upsamp_size)[pos_idx:neg_idx:-1].copy()
 
@@ -306,6 +330,7 @@ def create_physio_regressor(
     freq,
     outprefix,
     lag_max=None,
+    lag_min=None,
     trial_len=None,
     n_trials=None,
     ext='.1D',
@@ -329,10 +354,14 @@ def create_physio_regressor(
         Sample frequency of petco2hrf
     outprefix : list or path
         Path to output directory for computed regressors.
-    lag_max : int or float, optional
-        Limits (both positive and negative) for the estimated temporal lag,
-        expressed in seconds.
-        Default: 9 (i.e., -9 to +9 seconds)
+    lag_max : int, float, or None, optional
+        Upper limit of the temporal area to explore, expressed in seconds.
+        Caution: this is not a pythonic range, but a real range, i.e. the upper limit is included.
+        Default: None
+    lag_min : int, float, or None, optional
+        Lower limit of the temporal area to explore, expressed in seconds.
+        If set to None, and lag_max is not None and is positive, lag_min defaults to -lag_max (symmetric range).
+        Default: None
     trial_len : str or int, optional
         Length of each individual trial for timeseries which include more than one trial
         (e.g., multiple BreathHold trials, trials within CO2 challenges, ...)
@@ -398,6 +427,7 @@ def create_physio_regressor(
             petco2hrf,
             optshift,
             lag_max,
+            lag_min,
             freq,
             func_avg.shape[-1],
             func_upsampled.shape[-1],

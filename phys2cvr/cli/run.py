@@ -478,7 +478,6 @@ def _get_parser():
         '-lm',
         '-lmax',
         '--lag-max',
-        '-lm',
         dest='lag_max',
         type=float,
         help=(

@@ -168,9 +168,9 @@ def phys2cvr(
         Initial upper limit of the temporal area to explore, expressed in seconds. 
         If this value is specified, it is used as the initial upper limit of the search range for 
         identifying the optimal lag. If the optimal lag of a voxel
-        is within 1 lag step of starting-lag-max, the maximum lag for that voxel will be gradually
-        increase by the amount specified with --lag-increment until the optimal lag
-        is not at within 1 lag step of the maximum or it reaches --lag-max, whichever comes first.
+        is within 1 lag step of a boundary (either lag_min or starting-lag-max), the maximum lag for 
+        that voxel will be iteratively increased by the amount specified with --lag-increment until the optimal lag
+        is not at within 1 lag step of a boundary or --lag-max is reached, whichever comes first.
         Default: None
     lag_increment : int, float, or None, optional
         Step size (in seconds) to increase the maximum lag when the optimal lag is within 1 lag step

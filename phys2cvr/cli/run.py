@@ -520,9 +520,9 @@ def _get_parser():
             'Initial upper limit of the temporal area to explore, expressed in seconds. '
             'If this value is specified, it is used as the initial upper limit of the search range for '
             'identifying the optimal lag. If the optimal lag of a voxel '
-            'is within 1 lag step of starting-lag-max, the maximum lag for that voxel will be gradually '
-            'increase by the amount specified with --lag-increment until the optimal lag '
-            'is not at within 1 lag step of the maximum or it reaches --lag-max, whichever comes first. '
+            'is within 1 lag step of the minimum or starting maximum lag, the maximum lag for that voxel will be iteratively '
+            'increased by the amount specified with --lag-increment until the optimal lag '
+            'is not at within 1 lag step of the boundary or --lag-max is reached, whichever comes first. '
             'E.g., --starting-lag-max 9 -lag-max 15 --lag-increment 2 starts at 9s and will expand to 9, 11, 13 and 15s if needed.'
         ),
         default=None,
@@ -535,7 +535,7 @@ def _get_parser():
         type=float,
         help=(
             'Step size (in seconds) to increase the maximum lag when the optimal lag is within 1 lag step '
-            'of the boundary.  This value needs to be specified if starting_lag_max is not None.'
+            'of a boundary (minimum or maximum).  This value needs to be specified if starting_lag_max is not None.'
         ),
         default=None,
     )

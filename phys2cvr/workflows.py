@@ -781,8 +781,21 @@ def phys2cvr(
                     )
 
                 # Find the right lag for CVR estimation
-                lag_idx = np.argmax(r_square_all, axis=-1)
-                lag = (lag_idx * step) / freq + (mask * lag_min)
+                if starting_lag_max is not None:
+                    lag_idx = select_lag_avoid_boundary(
+                        r_square_all=r_square_all,
+                        mask=mask,
+                        starting_max=starting_lag_max,
+                        final_max=lag_max,
+                        lag_min=lag_min,
+                        lag_step=lag_step,
+                        freq=freq,
+                        expand_by=lag_increment,
+                    )
+                    lag = (lag_idx * step) / freq + (mask * lag_min)
+                else:
+                    lag_idx = np.argmax(r_square_all, axis=-1)
+                    lag = (lag_idx * step) / freq + (mask * lag_min)
                 # Express lag map relative to median of the roi
                 lag_rel = lag - (mask * np.median(lag[roi]))
 

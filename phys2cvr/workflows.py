@@ -346,10 +346,10 @@ def phys2cvr(
         )
     if starting_lag_max is not None and lag_increment is None:
         raise ValueError(
-            f'You provided a value for the starting_lag_max but did not specify lag_increment, which determines
-            the step size for increasing the maximum lag. If you are going to specify starting_lag_max, 
-            please also specify lag_increment!'
-        )    
+            f"You provided a value for starting_lag_max but did not specify lag_increment, which determines "
+            "the step size for increasing the maximum lag. If you are going to specify starting_lag_max, "
+            "please also specify lag_increment!"
+        ) 
     if starting_lag_max>=lag_max:
         raise ValueError(
             f'If you are going to specify a starting_lag_max, it should be less than lag_max.'

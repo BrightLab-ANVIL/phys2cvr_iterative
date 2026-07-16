@@ -456,7 +456,7 @@ def select_lag_avoid_boundary(
     expand_by=2,
 ):
     """
-    Iteratively expand the maximum shift only in voxels with lag values at the boundaries.
+    Expand the maximum shift only in voxels with lag values at the boundaries.
 
     Parameters
     ----------
